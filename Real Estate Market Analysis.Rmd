@@ -1,0 +1,159 @@
+---
+title: "Data Analysis on house sale price in Toronto and Mississauga"
+author: "Chaeyeon Stella Bae"
+date: "December 4, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(skimr)
+
+```
+
+In this paper, we are going to look at more complex data analysis on predicting sale price of detached homes in two different neighbourhoods, Mississauga and Toronto, using Multiple Linear Model.
+
+## I. Data Wrangling
+
+We will use randomly selected samples of 150 cases of the following IDs.
+```{r data sampling, echo=FALSE}
+
+real203 <- read.csv("real203.csv")
+
+#randomly selecting 150 samples from real203.csv
+set.seed(1002412285)
+real203 <- real203[sample(nrow(real203), 150), ]
+
+#display selected samples
+sort(real203$ID)
+
+```
+
+### Cleaning Data
+To begin with the cleaning process of data, we need to identify missing values. 
+
+```{r data cleaing, include=FALSE, echo=FALSE, message=FALSE,}
+
+#create 'lotsize' variable 
+real203$lotsize <- real203$lotlength * real203$lotwidth
+skim(real203)
+
+```
+Since there are too many missing values of maximum square footage(maxsqfoot), if we remove all of the cases containing missing values, we will end up omiting too many cases. Therefore, we will remove the maximum square footage variable which contains the most missing values. Then, we identify the missing values as shown below. Now we only got 7 cases containing missing values to omit. 
+
+```{r}
+#remove 'maxsqfoot' variable which contains mostly na values
+newreal203 <- select(real203, -maxsqfoot)
+
+#view cases with na values and omit them
+newreal203[!complete.cases(newreal203),]
+newreal203 <- na.omit(newreal203)
+
+
+
+```
+## II. Exploratory Data Analysis
+
+### a. Classify variables
+```{r II(a), include=FALSE, echo=FALSE, message=FALSE,}
+
+str(newreal203)
+
+```
+To classify each variables in this dataset; discrete variables are ID, number of bedrooms, number of bathrooms and number of parking spots. Continuous variables are sale price of property, last list price of property, previous year's property taxes, width, length and size of property. A categorical variable is location of neighborhood. 
+
+### b. Pairwise correlations and scatterplot matrix
+
+```{r II(b) correlations and matrix, echo=FALSE}
+
+#correlation coefficient
+quantdata <- newreal203 %>% select(-location, -ID)
+cor(quantdata)
+
+#scatterplot matrix
+pairs(quantdata, main="scatterplot matrix_2285")
+
+```
+
+| rank | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | 
+| predictors | list price | taxes | bathroom | bedroom | lotlength | lotsize | lotwidth | parking |
+| correlation coefficient | 0.9875 | 0.7546 | 0.6614 | 0.4558 | 0.4307 | 0.4215 | 0.3464 | 0.2561 |
+
+As shown in the correlation matrix and scatterplot matrix above, all predictors showed positive correlation with sale price. List price ranked the highest correlation with sale price, which is 0.987 of correlation coefficient. Previous year's property taxes has the second highest correlation with sale price of 0.755, then followed by number of bathroom with correlation of 0.661. Number of bedroom ranked forth highest with correlation of 0.4558, followed by lotlegth, lotsize, lotwidth of property, with correlation of 0.431, 0.422, and 0.346. Lastly, parking ranked the lowest correlation with sale price, of 0.256.
+
+### c. Identifying assumption of constant variance violation
+
+By looking at the scatterplot matrix, the assumption of constant variance for lotwdith of sale price would be strongly violated. This can be proved by the standardized residual plot below since it does not show a random/equal spread around the red horizontal line.
+
+```{r IIc residual plot, echo=FALSE}
+reslm=lm(sale ~ lotwidth, data = newreal203)
+plot(reslm, which=3, col=c("blue"), main="Square root of Standardized residuals vs. Fitted values _ 1002412285")
+```
+
+
+## III. Methods and Model
+
+### a. Multiple linear regression model
+
+Now, we will look at the multiple linear regression with all available predictors for sale price.  
+```{r mlr, include=FALSE, echo=FALSE, message=FALSE,}
+fullmodel <- lm(sale ~ list + bedroom + bathroom + parking + taxes + lotwidth + lotlength + location + lotsize, data = newreal203)
+
+summary(fullmodel)
+```
+|   |(Intercept)|list|bedroom|bathroom|parking|taxes|lotwidth|lotlength|location T|lotsize|
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | 
+|estimated regression coefficient|1.166e+05|8.133e-01|4.043e+03|1.837e+04|-1.818e+04|-1.818e+04| 2.226e+01|-3.409e+02|-4.021e+02|1.065e+05 |6.437e+00|
+|p-values| 0.2103| <0.0001 | 0.7740 | 0.1770 | 0.0478 | <0.0001 | 0.7877 | 0.4895| 0.0178| 0.2844|
+
+In accordance with the p-values, list price, taxes, parking, locationT has the significant t-test results. For fixed amount of all other predictors, for every 1 dollar increase in list price leads to an increase in sale price by 81.33 cents on average. The parking coefficient suggests that every 1 unit increase in number of parking spot will result a decrease in sale price by 18,180 dollar on average, holding all other predictors fixed. Also, For every 1 dollar increase in taxes, sale price increase by 22.26 dollars, on average, holding all other predictors constant. Last of all, 1 unit increase in difference between the means of locationT and locationM leads to an increase of 106,500 dollar in sale price on average, for all other predictors fixed. 
+
+### b. Backward elimination model using AIC
+
+```{r backward elimination with AIC, echo=FALSE}
+# backward AIC
+step(fullmodel, direction = "backward")
+
+```
+Using backward elimination with AIC, we choose the model with list, parking, taxes, and location predictors. Our final model looks like following:
+$$\hat{sale} = 118,500 + 0.8352list - 12,510 parking + 22.64 taxes + 87,610locationT$$
+The results are consistent with part a above that the relevant predictors were also found significant. 
+
+### c. Backward elimination model using BIC
+
+```{r backward elimination with BIC, include=FALSE, echo=FALSE, message=FALSE}
+# backward BIC;
+step(fullmodel, direction = "backward", k=log(nrow(newreal203)))
+```
+Using backward elimination with BIC, we end up with the model with list, taxes, and location predictors. Our final model looks like following:
+$$\hat{sale} = 73,340 + 0.8270list + 21.51 taxes + 132,200locationT$$
+The results are not consistent with part a and b above. List price, taxes and locationT are found as relevant predictors, however, number of parking spots resulted as one of the predictors in part a and b is eliminated with backward elimination using BIC here. 
+
+## IV. Discussions and Limitations
+
+### a. Diagnostic plots 
+```{r bicmodel, echo=FALSE, message=FALSE, include=FALSE}
+# Fit the model
+bicmodel <- lm(sale ~ list + taxes + location, data = newreal203)  
+summary(bicmodel)
+```
+```{r plots, echo=FALSE}
+par(mfrow = c(2, 2)) 
+plot(bicmodel, main="Residual plots_2285")
+```
+
+### b. Interpretation of residual plots 
+
+We can conclude whether the normal error MLR assumptions are satisfied by interpreting the plots above. 
+Residuals vs Fitted plot shows data spread around a horizontal line without a pattern, but points are not quite equally spread around the line. Therefore, we can see that the multicolinearity assumption is violated. 
+Normal Q-Q plot shows fairly good alignment with the line, indicating that the errors are normally distributed. 
+The Scale-Location plot appear to have higher density in residuals at lower fitted values, not equally spread residuals. This indicates that the assumption of constant variance (homoscedasticity) is violated. 
+Finally, Residuals vs. Leverage plot shows no influential point to exclude that no point is beyond Cook's distance.
+
+### c. Further Steps
+
+Since our model have violated multicolinearity and homoscedasticity assumption, 
+we can further try Box-Cox Transformations or Partial F-test to find a valid final model. 
